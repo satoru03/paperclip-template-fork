@@ -152,6 +152,18 @@ function setupHtml() {
         </div>
       </div>
 
+      <div class="step">
+        <div class="step-num">Additional users</div>
+        <div class="step-title">Invite another user</div>
+        <p class="muted" style="margin:0 0 10px 0; font-size:13px;">Generate an invite URL for additional users. Can be used multiple times.</p>
+        <div class="row"><button id="inviteBtn">Generate invite URL</button></div>
+        <div class="row" id="inviteNewRow" style="display:none;">
+          <div class="label">Invite URL</div>
+          <a id="inviteNew" href="#" target="_blank" rel="noopener" class="invite-link block"></a>
+        </div>
+        <pre id="inviteOutput" style="margin-top:10px; display:none;">-</pre>
+      </div>
+
       <div class="row muted">After accepting the invite, open <a href="/" target="_blank">Paperclip app</a>.</div>
       <div class="row footer">Template source &amp; support: <a href="https://github.com/Lukem121/paperclip-railway-template" target="_blank" rel="noopener">GitHub</a></div>
     </div>
@@ -285,6 +297,31 @@ function setupHtml() {
         }
       };
 
+      const inviteBtn = document.getElementById("inviteBtn");
+      const inviteNewRow = document.getElementById("inviteNewRow");
+      const inviteNewEl = document.getElementById("inviteNew");
+      const inviteOutputEl = document.getElementById("inviteOutput");
+      inviteBtn.onclick = async () => {
+        inviteBtn.disabled = true;
+        inviteOutputEl.style.display = "block";
+        inviteOutputEl.textContent = "Generating invite...";
+        inviteNewRow.style.display = "none";
+        try {
+          const res = await fetch("/setup/api/invite", { method: "POST" });
+          const j = await res.json();
+          inviteOutputEl.textContent = j.output || JSON.stringify(j, null, 2);
+          if (j.inviteUrl) {
+            inviteNewEl.href = j.inviteUrl;
+            inviteNewEl.textContent = j.inviteUrl;
+            inviteNewRow.style.display = "block";
+          }
+        } catch (err) {
+          inviteOutputEl.textContent = String(err);
+        } finally {
+          inviteBtn.disabled = false;
+        }
+      };
+
       refreshHealth();
       refreshAiStatus();
       setInterval(refreshHealth, 5000);
@@ -324,6 +361,35 @@ function runBootstrap(baseUrl) {
       const inviteMatch = out.match(/https?:\/\/[^\s]+\/invite\/[^\s]+/);
       resolve({
         ok: code === 0 || out.includes("instance admin already exists"),
+        inviteUrl: inviteMatch ? inviteMatch[0] : null,
+        output: out.trim(),
+      });
+    });
+  });
+}
+
+function runInvite(baseUrl) {
+  return new Promise((resolve) => {
+    const child = spawn("node", ["/wrapper/scripts/create-invite.mjs"], {
+      cwd: "/wrapper",
+      env: {
+        ...process.env,
+        BETTER_AUTH_BASE_URL: baseUrl,
+        PAPERCLIP_PUBLIC_URL: baseUrl,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let out = "";
+    child.stdout.on("data", (chunk) => {
+      out += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      out += chunk.toString();
+    });
+    child.on("close", (code) => {
+      const inviteMatch = out.match(/https?:\/\/[^\s]+\/invite\/[^\s]+/);
+      resolve({
+        ok: code === 0,
         inviteUrl: inviteMatch ? inviteMatch[0] : null,
         output: out.trim(),
       });
@@ -454,6 +520,12 @@ app.get("/setup/api/status", async (_req, res) => {
 app.post("/setup/api/bootstrap", async (req, res) => {
   const baseUrl = buildBaseUrl(req);
   const result = await runBootstrap(baseUrl);
+  res.status(result.ok ? 200 : 500).json(result);
+});
+
+app.post("/setup/api/invite", async (req, res) => {
+  const baseUrl = buildBaseUrl(req);
+  const result = await runInvite(baseUrl);
   res.status(result.ok ? 200 : 500).json(result);
 });
 

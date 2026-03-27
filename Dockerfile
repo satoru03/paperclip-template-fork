@@ -40,6 +40,7 @@ RUN npm install --omit=dev && npm cache clean --force
 COPY src /wrapper/src
 COPY scripts/entrypoint.sh /wrapper/entrypoint.sh
 COPY scripts/bootstrap-ceo.mjs /wrapper/template/bootstrap-ceo.mjs
+COPY scripts/create-invite.mjs /wrapper/scripts/create-invite.mjs
 RUN chmod +x /wrapper/entrypoint.sh
 
 # Optional local adapters/tools parity with upstream Dockerfile.
