@@ -116,3 +116,4 @@ docker stop paperclip_app paperclip_pg
 
 - **This template / deploy issues:** [this repo’s Issues](https://github.com/Lukem121/paperclip-railway-template/issues).
 - **Paperclip app bugs and features:** [paperclipai/paperclip Issues](https://github.com/paperclipai/paperclip/issues).
+# paperclip-template-fork
