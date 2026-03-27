@@ -219,7 +219,7 @@ function setupHtml() {
             claudeStatusWrap.className = "adapter-status status-pending";
             claudeCheck.textContent = "○";
             claudeStatusEl.textContent = "Claude: Set ANTHROPIC_API_KEY in Railway for Claude-based agents";
-            claudeButtonRow.style.display = "none";
+            claudeButtonRow.style.display = "";
           }
         } catch {
           codexStatusWrap.className = "adapter-status status-pending";
