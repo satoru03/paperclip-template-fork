@@ -44,8 +44,8 @@ RUN chmod +x /wrapper/entrypoint.sh
 # Optional local adapters/tools parity with upstream Dockerfile.
 RUN npm install --global --omit=dev @anthropic-ai/claude-code@latest @openai/codex@latest opencode-ai
 RUN npm install --global --omit=dev tsx
-RUN mkdir -p /paperclip \
-    && chown -R node:node /app /paperclip /wrapper
+RUN mkdir -p /paperclip /home/node/.claude \
+    && chown -R node:node /app /paperclip /wrapper /home/node/.claude
 
 # Railway sets PORT at runtime and this process binds to it.
 # startCommand in railway.toml calls entrypoint.sh which fixes /paperclip volume

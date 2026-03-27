@@ -133,6 +133,8 @@ function setupHtml() {
         </div>
         <div class="row" id="codexButtonRow" style="margin-bottom:8px;"><button id="codexLogin" type="button">Run Codex login</button></div>
         <pre id="codexOutput" style="margin-top:10px; display:none;">-</pre>
+        <div class="row" id="claudeButtonRow" style="margin-top:8px;"><button id="claudeLogin" type="button">Run Claude pre-auth</button></div>
+        <pre id="claudeOutput" style="margin-top:10px; display:none;">-</pre>
       </div>
 
       <div class="step">
@@ -165,6 +167,9 @@ function setupHtml() {
       const codexStatusWrap = document.getElementById("codexStatusWrap");
       const codexCheck = document.getElementById("codexCheck");
       const codexStatusEl = document.getElementById("codexStatus");
+      const claudeBtn = document.getElementById("claudeLogin");
+      const claudeButtonRow = document.getElementById("claudeButtonRow");
+      const claudeOutput = document.getElementById("claudeOutput");
       const claudeStatusWrap = document.getElementById("claudeStatusWrap");
       const claudeCheck = document.getElementById("claudeCheck");
       const claudeStatusEl = document.getElementById("claudeStatus");
@@ -200,14 +205,21 @@ function setupHtml() {
               codexStatusEl.textContent = "Codex: Set OPENAI_API_KEY in Railway, then run login";
             }
           }
-          if (cl.anthropicApiKeySet) {
+          if (cl.claudeAuthenticated) {
             claudeStatusWrap.className = "adapter-status status-ok";
             claudeCheck.textContent = "✓";
-            claudeStatusEl.textContent = "Claude: API key set";
+            claudeStatusEl.textContent = "Claude: authenticated";
+            claudeButtonRow.style.display = "none";
+          } else if (cl.anthropicApiKeySet) {
+            claudeStatusWrap.className = "adapter-status status-pending";
+            claudeCheck.textContent = "○";
+            claudeStatusEl.textContent = "Claude: API key set — run pre-auth below";
+            claudeButtonRow.style.display = "";
           } else {
             claudeStatusWrap.className = "adapter-status status-pending";
             claudeCheck.textContent = "○";
             claudeStatusEl.textContent = "Claude: Set ANTHROPIC_API_KEY in Railway for Claude-based agents";
+            claudeButtonRow.style.display = "none";
           }
         } catch {
           codexStatusWrap.className = "adapter-status status-pending";
@@ -216,6 +228,7 @@ function setupHtml() {
           claudeStatusWrap.className = "adapter-status status-pending";
           claudeCheck.textContent = "○";
           claudeStatusEl.textContent = "Claude: status unavailable";
+          claudeButtonRow.style.display = "none";
         }
       }
 
@@ -253,6 +266,22 @@ function setupHtml() {
           codexOutput.textContent = String(err);
         } finally {
           codexBtn.disabled = false;
+        }
+      };
+
+      claudeBtn.onclick = async () => {
+        claudeBtn.disabled = true;
+        claudeOutput.style.display = "block";
+        claudeOutput.textContent = "Running Claude pre-auth (this may take a few seconds)...";
+        try {
+          const res = await fetch("/setup/api/claude-login", { method: "POST" });
+          const j = await res.json();
+          claudeOutput.textContent = j.output || JSON.stringify(j, null, 2);
+          await refreshAiStatus();
+        } catch (err) {
+          claudeOutput.textContent = String(err);
+        } finally {
+          claudeBtn.disabled = false;
         }
       };
 
@@ -332,6 +361,39 @@ function runCodexLogin() {
   });
 }
 
+function runClaudeLogin() {
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!apiKey) {
+    return Promise.resolve({
+      ok: false,
+      output: "ANTHROPIC_API_KEY is not set. Add it in Railway service variables, then run this again.",
+    });
+  }
+  return new Promise((resolve) => {
+    const child = spawn("claude", ["-p", "respond with OK", "--bare", "--max-turns", "1"], {
+      env: process.env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let out = "";
+    let err = "";
+    const timeout = setTimeout(() => {
+      child.kill("SIGTERM");
+      resolve({ ok: false, output: "Claude pre-auth timed out after 30s" });
+    }, 30000);
+    child.stdout.on("data", (chunk) => { out += chunk.toString(); });
+    child.stderr.on("data", (chunk) => { err += chunk.toString(); });
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      const combined = [out.trim(), err.trim()].filter(Boolean).join("\n") || "(no output)";
+      resolve({ ok: code === 0, output: combined });
+    });
+    child.on("error", (e) => {
+      clearTimeout(timeout);
+      resolve({ ok: false, output: `Failed to run claude: ${e.message}` });
+    });
+  });
+}
+
 const app = express();
 const proxy = httpProxy.createProxyServer({
   target: PAPERCLIP_TARGET,
@@ -382,9 +444,11 @@ function getCodexStatus() {
   return { codexAuthenticated, openaiApiKeySet };
 }
 
+let claudeAuthVerified = false;
+
 function getClaudeStatus() {
   const anthropicApiKeySet = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
-  return { anthropicApiKeySet };
+  return { anthropicApiKeySet, claudeAuthenticated: claudeAuthVerified };
 }
 
 app.get("/setup/api/codex-status", (_req, res) => {
@@ -397,6 +461,12 @@ app.get("/setup/api/ai-status", (_req, res) => {
 
 app.post("/setup/api/codex-login", async (_req, res) => {
   const result = await runCodexLogin();
+  res.status(result.ok ? 200 : 400).json(result);
+});
+
+app.post("/setup/api/claude-login", async (_req, res) => {
+  const result = await runClaudeLogin();
+  if (result.ok) claudeAuthVerified = true;
   res.status(result.ok ? 200 : 400).json(result);
 });
 
@@ -434,6 +504,20 @@ if (process.env.OPENAI_API_KEY?.trim()) {
       else console.warn("[wrapper] Codex login failed:", r.output);
     })
     .catch((e) => console.warn("[wrapper] Codex login error:", e.message));
+}
+
+// If ANTHROPIC_API_KEY is set, pre-authenticate Claude at startup so agents work without visiting /setup
+if (process.env.ANTHROPIC_API_KEY?.trim()) {
+  runClaudeLogin()
+    .then((r) => {
+      if (r.ok) {
+        claudeAuthVerified = true;
+        console.log("[wrapper] Claude pre-auth succeeded (ANTHROPIC_API_KEY)");
+      } else {
+        console.warn("[wrapper] Claude pre-auth failed:", r.output);
+      }
+    })
+    .catch((e) => console.warn("[wrapper] Claude pre-auth error:", e.message));
 }
 
 const shutdown = () => {
