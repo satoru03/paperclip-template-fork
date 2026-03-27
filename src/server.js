@@ -401,6 +401,8 @@ const BA_USER = process.env.BASIC_AUTH_USER?.trim();
 const BA_PASS = process.env.BASIC_AUTH_PASS?.trim();
 if (BA_USER && BA_PASS) {
   app.use((req, res, next) => {
+    // Skip auth for health check so Railway doesn't mark the service as unavailable.
+    if (req.path === "/setup/healthz") return next();
     const header = req.headers.authorization;
     if (header) {
       const match = header.match(/^Basic\s+(.+)$/i);
