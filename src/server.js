@@ -395,6 +395,25 @@ function runClaudeLogin() {
 }
 
 const app = express();
+
+// Basic auth middleware — enabled when BASIC_AUTH_USER and BASIC_AUTH_PASS are set.
+const BA_USER = process.env.BASIC_AUTH_USER?.trim();
+const BA_PASS = process.env.BASIC_AUTH_PASS?.trim();
+if (BA_USER && BA_PASS) {
+  app.use((req, res, next) => {
+    const header = req.headers.authorization;
+    if (header) {
+      const match = header.match(/^Basic\s+(.+)$/i);
+      if (match) {
+        const [user, pass] = Buffer.from(match[1], "base64").toString().split(":");
+        if (user === BA_USER && pass === BA_PASS) return next();
+      }
+    }
+    res.set("WWW-Authenticate", 'Basic realm="Paperclip"');
+    res.status(401).end("Unauthorized");
+  });
+  console.log("[wrapper] Basic auth enabled");
+}
 const proxy = httpProxy.createProxyServer({
   target: PAPERCLIP_TARGET,
   ws: true,
