@@ -44,9 +44,9 @@ RUN chmod +x /wrapper/entrypoint.sh
 # Optional local adapters/tools parity with upstream Dockerfile.
 RUN npm install --global --omit=dev @anthropic-ai/claude-code@latest @openai/codex@latest opencode-ai wrangler
 RUN npm install --global --omit=dev tsx
-RUN curl -fsSL https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.deb -o /tmp/supabase.deb \
-    && dpkg -i /tmp/supabase.deb \
-    && rm /tmp/supabase.deb
+RUN curl -fsSL https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz -o /tmp/supabase.tar.gz \
+    && tar -xzf /tmp/supabase.tar.gz -C /usr/local/bin supabase \
+    && rm /tmp/supabase.tar.gz
 RUN mkdir -p /paperclip /home/node/.claude \
     && chown -R node:node /app /paperclip /wrapper /home/node/.claude
 
