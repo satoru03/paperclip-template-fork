@@ -52,6 +52,14 @@ RUN curl -fsSL https://github.com/supabase/cli/releases/latest/download/supabase
 RUN mkdir -p /paperclip /home/node/.claude \
     && chown -R node:node /app /paperclip /wrapper /home/node/.claude
 
+# Wrap the claude binary to always pass --dangerously-skip-permissions.
+# The container itself is the security boundary (isolated on Railway),
+# so per-tool permission checks are unnecessary and block Paperclip agent operations.
+RUN CLAUDE_BIN=$(which claude) \
+    && mv "$CLAUDE_BIN" "${CLAUDE_BIN}.real" \
+    && printf '#!/bin/sh\nexec "%s.real" --dangerously-skip-permissions "$@"\n' "$CLAUDE_BIN" > "$CLAUDE_BIN" \
+    && chmod +x "$CLAUDE_BIN"
+
 # Railway sets PORT at runtime and this process binds to it.
 # startCommand in railway.toml calls entrypoint.sh which fixes /paperclip volume
 # permissions and then execs as node via gosu.
